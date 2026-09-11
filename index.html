@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Projeksiyon IPTV - Canlı Yayın</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body, html {
+            margin: 0; 
+            padding: 0; 
+            width: 100%; 
+            height: 100%;
+            background-color: black; 
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+        video {
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            outline: none;
+        }
+        #playOverlay {
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%;
+            background: rgba(0,0,0,0.85); 
+            display: flex;
+            justify-content: center; 
+            align-items: center; 
+            z-index: 10;
+        }
+        #playButton {
+            padding: 30px 60px; 
+            font-size: 32px; 
+            font-weight: bold;
+            background-color: #00a5e2; 
+            color: white; 
+            border: 4px solid transparent;
+            border-radius: 12px; 
+            cursor: pointer; 
+            outline: none;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        #playButton:focus, #playButton:hover {
+            background-color: #00c3ff;
+            border: 4px solid white;
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="playOverlay">
+        <button id="playButton" tabindex="1">YAYINI BAŞLAT</button>
+    </div>
+
+    <video id="videoPlayer" controls></video>
+
+    <script>
+        var video = document.getElementById('videoPlayer');
+        var overlay = document.getElementById('playOverlay');
+        var playBtn = document.getElementById('playButton');
+        
+        // ZORUNLU GÜNCELLEME: Yayın kaynağı artık bizim Render sunucumuzdaki yol
+        var videoSrc = '/stream/yeni-kanal';
+
+        window.onload = function() {
+            playBtn.focus();
+        };
+
+        function startStream() {
+            overlay.style.display = 'none';
+
+            if (video.requestFullscreen) {
+                video.requestFullscreen().catch(err => console.log(err));
+            } else if (video.webkitRequestFullscreen) {
+                video.webkitRequestFullscreen();
+            }
+
+            if (Hls.isSupported()) {
+                // TV cihazları için optimize edilmiş, belleği şişirmeyen HLS ayarları
+                var hlsConfig = {
+                    maxBufferSize: 10 * 1024 * 1024, // Maksimum RAM kullanımı 10 MB ile sınırlandı
+                    maxBufferLength: 10,             // İleriye dönük en fazla 10 saniye yükle
+                    maxMaxBufferLength: 15,          // Ne olursa olsun ileri tamponu 15 saniyeyi geçmesin
+                    backBufferLength: 10,            // EN ÖNEMLİSİ: İzlenmiş geçmiş yayının sadece son 10 saniyesini RAM'de tut, gerisini sil
+                    liveSyncDurationCount: 3,        // Canlı yayına yakın kal
+                    liveMaxLatencyDurationCount: 10  // Gecikme artarsa eski paketleri atla
+                };
+
+                var hls = new Hls(hlsConfig);
+                hls.loadSource(videoSrc);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    video.play();
+                });
+
+                // Olası anlık takılmalarda yayını otomatik kurtarması için hata yönetimi
+                hls.on(Hls.Events.ERROR, function (event, data) {
+                    if (data.fatal) {
+                        switch (data.type) {
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                console.log('Kritik medya hatası, kurtarılıyor...');
+                                hls.recoverMediaError();
+                                break;
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                console.log('Ağ hatası, yeniden bağlanıyor...');
+                                hls.startLoad();
+                                break;
+                            default:
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+            } 
+            else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = videoSrc;
+                video.play();
+            }
+        }
+
+        playBtn.addEventListener('click', startStream);
+        playBtn.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                startStream();
+            }
+        });
+    </script>
+
+</body>
+</html>
